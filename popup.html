@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cortex AI</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <div class="logo-icon">C</div>
+        <span class="logo-text">Cortex AI</span>
+      </div>
+      <div class="status-badge" id="statusBadge">
+        <span class="status-dot"></span>
+        <span class="status-text">Ready</span>
+      </div>
+    </header>
+
+    <!-- Not in Meeting State -->
+    <div id="notInMeeting" class="state-section">
+      <div class="empty-state">
+        <div class="empty-icon">📹</div>
+        <h3>No Active Meeting</h3>
+        <p>Join a Zoom, Google Meet, or Teams meeting to start capturing tasks.</p>
+      </div>
+    </div>
+
+    <!-- In Meeting State -->
+    <div id="inMeeting" class="state-section hidden">
+      <div class="meeting-info">
+        <div class="platform-badge" id="platformBadge">Zoom</div>
+        <h3 id="meetingTitle">Meeting Title</h3>
+        <p class="meeting-id" id="meetingId">ID: 123-456-789</p>
+      </div>
+
+      <div class="recording-section">
+        <button id="recordBtn" class="btn btn-record">
+          <span class="record-icon">🔴</span>
+          <span class="btn-text">Start Recording</span>
+        </button>
+        <p class="recording-hint">Click to extract tasks from this meeting</p>
+      </div>
+
+      <div class="stats-section">
+        <div class="stat-item">
+          <span class="stat-value" id="captionCount">0</span>
+          <span class="stat-label">Captions</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value" id="duration">00:00</span>
+          <span class="stat-label">Duration</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recording Active State -->
+    <div id="recordingActive" class="state-section hidden">
+      <div class="recording-indicator">
+        <div class="pulse-ring"></div>
+        <div class="pulse-ring"></div>
+        <div class="recording-icon">🔴</div>
+      </div>
+      <h3>Recording in Progress</h3>
+      <p class="recording-subtitle">AI is extracting tasks from the meeting</p>
+
+      <div class="live-stats">
+        <div class="live-stat">
+          <span class="live-value" id="liveCaptionCount">0</span>
+          <span class="live-label">Captures</span>
+        </div>
+        <div class="live-stat">
+          <span class="live-value" id="liveDuration">00:00</span>
+          <span class="live-label">Elapsed</span>
+        </div>
+      </div>
+
+      <button id="stopBtn" class="btn btn-stop">
+        <span class="stop-icon">⏹</span>
+        <span class="btn-text">Stop Recording</span>
+      </button>
+    </div>
+
+    <!-- Settings Section -->
+    <div class="settings-section">
+      <details class="settings-dropdown">
+        <summary>⚙️ Settings</summary>
+        <div class="settings-content">
+          <div class="setting-item">
+            <label for="apiUrl">API URL</label>
+            <input type="text" id="apiUrl" placeholder="http://localhost:5572">
+          </div>
+          <div class="setting-item">
+            <label for="authToken">Auth Token</label>
+            <input type="password" id="authToken" placeholder="Your JWT token">
+          </div>
+          <button id="saveSettings" class="btn btn-secondary">Save Settings</button>
+        </div>
+      </details>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <a href="http://localhost:3000" target="_blank" class="footer-link">
+        Open Dashboard →
+      </a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
