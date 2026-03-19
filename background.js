@@ -1,7 +1,8 @@
-// Cortex AI Chrome Extension - Background Script
-// Handles API communication, meeting detection, and caption processing
+// For Production
+const API_BASE_URL = "https://rq6ypa7pyw.ap-south-1.awsapprunner.com";
 
-const API_BASE_URL = "http://localhost:5572"; // Update with your API URL
+// For Development
+// const API_BASE_URL = "http://localhost:8080";
 
 // Store for active meetings
 let activeMeetings = {};
@@ -34,7 +35,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case "GET_STATUS":
       getStatus().then(sendResponse);
-      return true; // Keep channel open for async
+      return true;
 
     case "START_RECORDING":
       startRecording(message.data).then(sendResponse);
