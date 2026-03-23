@@ -1,24 +1,25 @@
-// For Production
-const API_BASE_URL = "https://rq6ypa7pyw.ap-south-1.awsapprunner.com";
+// Cortex AI Extension — Service Worker
 
-// For Development
-// const API_BASE_URL = "http://localhost:8080";
+const PROD_API_URL = "https://rq6ypa7pyw.ap-south-1.awsapprunner.com";
+const DEV_API_URL  = "http://localhost:8080";
 
-// Store for active meetings
+// In-memory map of detected meetings (keyed by meetingId)
 let activeMeetings = {};
 
-// Initialize extension
+// ─── Init ────────────────────────────────────────────────────────────────────
+
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("Cortex AI Extension installed");
   chrome.storage.local.set({
-    apiUrl: API_BASE_URL,
+    apiUrl: PROD_API_URL,
     isRecording: false,
     activeMeetingId: null,
     captions: [],
+    scheduledMeetings: [],
   });
 });
 
-// Listen for messages from content script and popup
+// ─── Message Router ──────────────────────────────────────────────────────────
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
     case "MEETING_DETECTED":
@@ -49,119 +50,93 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.storage.local.set({ apiUrl: message.data.url });
       sendResponse({ success: true });
       break;
+
+    case "SCHEDULE_MEETING":
+      scheduleMeeting(message.data).then(sendResponse);
+      return true;
+
+    case "GET_SCHEDULES":
+      getSchedules().then(sendResponse);
+      return true;
+
+    case "CANCEL_SCHEDULE":
+      cancelSchedule(message.data.alarmName).then(sendResponse);
+      return true;
   }
 });
 
-// Handle meeting detection
-async function handleMeetingDetected(data, tabId) {
-  console.log("Meeting detected:", data);
+// ─── Meeting Detection ───────────────────────────────────────────────────────
 
+async function handleMeetingDetected(data, tabId) {
   const { platform, meetingId, meetingTitle } = data;
 
-  // Store meeting info
-  activeMeetings[meetingId] = {
-    platform,
-    meetingId,
-    meetingTitle,
-    tabId,
-    startTime: Date.now(),
-    captions: [],
-  };
+  activeMeetings[meetingId] = { platform, meetingId, meetingTitle, tabId, startTime: Date.now(), captions: [] };
 
-  // Update extension icon
   chrome.action.setBadgeText({ text: "LIVE", tabId });
   chrome.action.setBadgeBackgroundColor({ color: "#ef4444" });
 
-  // Notify popup
-  chrome.runtime.sendMessage({
-    type: "MEETING_STATUS_CHANGED",
-    data: { isInMeeting: true, meeting: activeMeetings[meetingId] },
-  });
+  // Auto-start recording if this tab was opened by a scheduled meeting
+  const { autoRecordPending } = await chrome.storage.local.get("autoRecordPending");
+  if (autoRecordPending) {
+    await chrome.storage.local.remove("autoRecordPending");
+    const result = await startRecording({ title: meetingTitle || "Scheduled Meeting", autoStarted: true });
+    if (!result.success) {
+      console.warn("Auto-start recording failed:", result.error);
+    }
+  }
+
+  chrome.runtime.sendMessage({ type: "MEETING_STATUS_CHANGED", data: { isInMeeting: true, meeting: activeMeetings[meetingId] } }).catch(() => {});
 }
 
-// Handle meeting ended
 async function handleMeetingEnded(data) {
-  console.log("Meeting ended:", data);
-
   const { meetingId } = data;
   const meeting = activeMeetings[meetingId];
 
   if (meeting) {
-    // Clear badge
     chrome.action.setBadgeText({ text: "", tabId: meeting.tabId });
 
-    // If recording was active, stop it
     const { isRecording } = await chrome.storage.local.get("isRecording");
-    if (isRecording) {
-      await stopRecording();
-    }
+    if (isRecording) await stopRecording();
 
-    // Clean up
     delete activeMeetings[meetingId];
-
-    // Notify popup
-    chrome.runtime.sendMessage({
-      type: "MEETING_STATUS_CHANGED",
-      data: { isInMeeting: false },
-    });
+    chrome.runtime.sendMessage({ type: "MEETING_STATUS_CHANGED", data: { isInMeeting: false } }).catch(() => {});
   }
 }
 
-// Handle caption received
+// ─── Caption Handling ────────────────────────────────────────────────────────
+
 async function handleCaptionReceived(data) {
   const { meetingId, text, speaker, timestamp } = data;
 
-  // Store caption locally
   const { captions = [] } = await chrome.storage.local.get("captions");
   captions.push({ meetingId, text, speaker, timestamp });
   await chrome.storage.local.set({ captions });
 
-  // If recording is active, send to API
-  const { isRecording, activeMeetingId, apiUrl } = await chrome.storage.local.get([
-    "isRecording",
-    "activeMeetingId",
-    "apiUrl",
-  ]);
+  const { isRecording, activeMeetingId, apiUrl } = await chrome.storage.local.get(["isRecording", "activeMeetingId", "apiUrl"]);
 
   if (isRecording && activeMeetingId) {
-    try {
-      const token = await getAuthToken();
-      if (token) {
-        await fetch(`${apiUrl}/integrations/bot/captions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            meetingId: activeMeetingId,
-            text: `${speaker ? speaker + ": " : ""}${text}`,
-            timestamp,
-          }),
-        });
-      }
-    } catch (error) {
-      console.error("Failed to send caption:", error);
+    const token = await getAuthToken();
+    if (token) {
+      fetch(`${apiUrl}/integrations/bot/captions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ meetingId: activeMeetingId, text: `${speaker ? speaker + ": " : ""}${text}`, timestamp }),
+      }).catch((err) => console.error("Caption send failed:", err));
     }
   }
 }
 
-// Get extension status
+// ─── Status ──────────────────────────────────────────────────────────────────
+
 async function getStatus() {
-  const { isRecording, activeMeetingId, captions, apiUrl } =
-    await chrome.storage.local.get([
-      "isRecording",
-      "activeMeetingId",
-      "captions",
-      "apiUrl",
-    ]);
+  const { isRecording, activeMeetingId, captions, apiUrl } = await chrome.storage.local.get([
+    "isRecording", "activeMeetingId", "captions", "apiUrl",
+  ]);
 
   const meetings = Object.values(activeMeetings);
-  const isInMeeting = meetings.length > 0;
-
   return {
     isRecording,
-    isInMeeting,
+    isInMeeting: meetings.length > 0,
     activeMeetingId,
     currentMeeting: meetings[0] || null,
     captionCount: captions?.length || 0,
@@ -169,27 +144,19 @@ async function getStatus() {
   };
 }
 
-// Start recording
+// ─── Start Recording ─────────────────────────────────────────────────────────
+
 async function startRecording(data) {
   try {
-    const { meetingTitle, apiUrl } = await chrome.storage.local.get([
-      "meetingTitle",
-      "apiUrl",
-    ]);
+    const { apiUrl } = await chrome.storage.local.get("apiUrl");
     const token = await getAuthToken();
 
-    if (!token) {
-      return { success: false, error: "Not authenticated" };
-    }
+    if (!token) return { success: false, error: "Not authenticated. Paste your token in Settings." };
 
-    // Start meeting via API
     const response = await fetch(`${apiUrl}/user/meetings/start`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ title: meetingTitle || data.title }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ title: data?.title || "Meeting" }),
     });
 
     const result = await response.json();
@@ -200,84 +167,127 @@ async function startRecording(data) {
         activeMeetingId: result.data.meeting.meetingId,
         captions: [],
       });
-
       return { success: true, meeting: result.data.meeting };
-    } else {
-      return { success: false, error: result.message };
     }
-  } catch (error) {
-    console.error("Failed to start recording:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: result.message };
+  } catch (err) {
+    console.error("startRecording error:", err);
+    return { success: false, error: err.message };
   }
 }
 
-// Stop recording
+// ─── Stop Recording ──────────────────────────────────────────────────────────
+
 async function stopRecording() {
   try {
-    const { activeMeetingId, apiUrl } = await chrome.storage.local.get([
-      "activeMeetingId",
-      "apiUrl",
-    ]);
+    const { activeMeetingId, apiUrl } = await chrome.storage.local.get(["activeMeetingId", "apiUrl"]);
     const token = await getAuthToken();
 
-    if (!token || !activeMeetingId) {
-      return { success: false, error: "No active recording" };
-    }
+    if (!token || !activeMeetingId) return { success: false, error: "No active recording" };
 
-    // End meeting via API
-    const response = await fetch(
-      `${apiUrl}/user/meetings/${activeMeetingId}/end`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+    const response = await fetch(`${apiUrl}/user/meetings/${activeMeetingId}/end`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
     const result = await response.json();
 
     if (result.success) {
-      await chrome.storage.local.set({
-        isRecording: false,
-        activeMeetingId: null,
-        captions: [],
-      });
-
+      await chrome.storage.local.set({ isRecording: false, activeMeetingId: null, captions: [] });
       return { success: true, meeting: result.data.meeting };
-    } else {
-      return { success: false, error: result.message };
     }
-  } catch (error) {
-    console.error("Failed to stop recording:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: result.message };
+  } catch (err) {
+    console.error("stopRecording error:", err);
+    return { success: false, error: err.message };
   }
 }
 
-// Get auth token from storage
+// ─── Auth Token ──────────────────────────────────────────────────────────────
+
 async function getAuthToken() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get("authToken", (result) => {
-      resolve(result.authToken || null);
-    });
-  });
+  const { authToken } = await chrome.storage.local.get("authToken");
+  return authToken || null;
 }
 
-// Handle tab updates to detect meeting changes
+// ─── Auto-Join Scheduler ─────────────────────────────────────────────────────
+
+async function scheduleMeeting(data) {
+  try {
+    const { meetingUrl, title, scheduledAt } = data;
+    const fireTime = new Date(scheduledAt).getTime();
+
+    if (fireTime <= Date.now()) {
+      return { success: false, error: "Scheduled time must be in the future" };
+    }
+
+    const alarmName = `scheduled-meeting-${Date.now()}`;
+
+    // Create a Chrome alarm at the scheduled time
+    chrome.alarms.create(alarmName, { when: fireTime });
+
+    // Store schedule entry
+    const { scheduledMeetings = [] } = await chrome.storage.local.get("scheduledMeetings");
+    scheduledMeetings.push({ alarmName, meetingUrl, title, scheduledAt });
+    await chrome.storage.local.set({ scheduledMeetings });
+
+    return { success: true, alarmName };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+async function getSchedules() {
+  const { scheduledMeetings = [] } = await chrome.storage.local.get("scheduledMeetings");
+  return scheduledMeetings;
+}
+
+async function cancelSchedule(alarmName) {
+  try {
+    chrome.alarms.clear(alarmName);
+    const { scheduledMeetings = [] } = await chrome.storage.local.get("scheduledMeetings");
+    await chrome.storage.local.set({
+      scheduledMeetings: scheduledMeetings.filter((s) => s.alarmName !== alarmName),
+    });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// When the alarm fires → open the meeting tab, mark auto-record pending
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (!alarm.name.startsWith("scheduled-meeting-")) return;
+
+  const { scheduledMeetings = [] } = await chrome.storage.local.get("scheduledMeetings");
+  const schedule = scheduledMeetings.find((s) => s.alarmName === alarm.name);
+
+  if (!schedule) return;
+
+  // Remove from list
+  await chrome.storage.local.set({
+    scheduledMeetings: scheduledMeetings.filter((s) => s.alarmName !== alarm.name),
+    autoRecordPending: true,
+  });
+
+  // Open the meeting tab — content script will detect meeting and auto-start recording
+  chrome.tabs.create({ url: schedule.meetingUrl, active: true });
+});
+
+// ─── Tab Update (platform detection only — no injected.js needed) ────────────
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === "complete" && tab.url) {
     const platform = detectPlatform(tab.url);
     if (platform) {
-      // Inject content script if needed
-      chrome.scripting.executeScript({
-        target: { tabId },
-        files: ["injected.js"],
-      });
+      // Content script is already injected via manifest content_scripts declaration.
+      // Badge update to show the extension is active on this tab.
+      chrome.action.setBadgeText({ text: "ON", tabId });
+      chrome.action.setBadgeBackgroundColor({ color: "#7c3aed", tabId });
     }
   }
 });
 
-// Detect meeting platform from URL
 function detectPlatform(url) {
   if (url.includes("zoom.us")) return "zoom";
   if (url.includes("meet.google.com")) return "google-meet";

@@ -5,6 +5,75 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cortex AI</title>
   <link rel="stylesheet" href="popup.css">
+  <style>
+    /* Tab navigation */
+    .tabs { display: flex; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+    .tab-btn {
+      flex: 1; padding: 8px 4px; font-size: 12px; font-weight: 600;
+      border: none; background: none; cursor: pointer; color: #64748b;
+      border-bottom: 2px solid transparent; transition: all 0.15s;
+    }
+    .tab-btn.active { color: #7c3aed; border-bottom-color: #7c3aed; background: #fff; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Schedule section */
+    .schedule-panel { padding: 12px 14px; }
+    .schedule-form { display: flex; flex-direction: column; gap: 8px; }
+    .schedule-form label { font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 2px; display: block; }
+    .schedule-form input {
+      width: 100%; padding: 7px 10px; font-size: 12px; border: 1px solid #e2e8f0;
+      border-radius: 8px; box-sizing: border-box; outline: none;
+      transition: border-color 0.15s;
+    }
+    .schedule-form input:focus { border-color: #7c3aed; }
+    .btn-schedule {
+      background: linear-gradient(135deg, #7c3aed, #a855f7);
+      color: #fff; border: none; border-radius: 8px; padding: 8px 12px;
+      font-size: 12px; font-weight: 600; cursor: pointer; width: 100%;
+      margin-top: 4px; transition: opacity 0.15s;
+    }
+    .btn-schedule:hover { opacity: 0.9; }
+    .btn-schedule:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Scheduled list */
+    .schedules-title {
+      font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase;
+      letter-spacing: 0.05em; margin: 12px 0 6px;
+    }
+    .schedule-item {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      padding: 8px 10px; background: #f8fafc; border-radius: 8px;
+      border: 1px solid #e2e8f0; margin-bottom: 6px;
+    }
+    .schedule-item-info { flex: 1; min-width: 0; }
+    .schedule-item-title { font-size: 12px; font-weight: 600; color: #1e293b; truncate: ellipsis; }
+    .schedule-item-time { font-size: 11px; color: #7c3aed; margin-top: 2px; }
+    .schedule-item-url { font-size: 10px; color: #94a3b8; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+    .btn-cancel-schedule {
+      background: none; border: 1px solid #fecaca; color: #ef4444; border-radius: 6px;
+      padding: 3px 7px; font-size: 10px; cursor: pointer; flex-shrink: 0; margin-left: 6px;
+      transition: background 0.15s;
+    }
+    .btn-cancel-schedule:hover { background: #fef2f2; }
+    .no-schedules { font-size: 12px; color: #94a3b8; text-align: center; padding: 12px 0; }
+
+    /* Settings improvements */
+    .settings-section { border-top: 1px solid #e2e8f0; }
+    .settings-dropdown summary { padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; cursor: pointer; list-style: none; }
+    .settings-dropdown summary::-webkit-details-marker { display: none; }
+    .settings-content { padding: 8px 14px 12px; background: #f8fafc; }
+    .setting-item { margin-bottom: 8px; }
+    .setting-item label { font-size: 11px; font-weight: 600; color: #475569; display: block; margin-bottom: 3px; }
+    .setting-item input {
+      width: 100%; padding: 6px 8px; font-size: 11px; border: 1px solid #e2e8f0;
+      border-radius: 6px; box-sizing: border-box;
+    }
+    .settings-hint {
+      font-size: 10px; color: #94a3b8; margin-top: 4px; line-height: 1.4;
+    }
+    a.settings-hint-link { color: #7c3aed; text-decoration: underline; cursor: pointer; }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -20,82 +89,122 @@
       </div>
     </header>
 
-    <!-- Not in Meeting State -->
-    <div id="notInMeeting" class="state-section">
-      <div class="empty-state">
-        <div class="empty-icon">📹</div>
-        <h3>No Active Meeting</h3>
-        <p>Join a Zoom, Google Meet, or Teams meeting to start capturing tasks.</p>
-      </div>
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="recording">🎙 Recording</button>
+      <button class="tab-btn" data-tab="schedule">📅 Schedule</button>
     </div>
 
-    <!-- In Meeting State -->
-    <div id="inMeeting" class="state-section hidden">
-      <div class="meeting-info">
-        <div class="platform-badge" id="platformBadge">Zoom</div>
-        <h3 id="meetingTitle">Meeting Title</h3>
-        <p class="meeting-id" id="meetingId">ID: 123-456-789</p>
+    <!-- Recording Tab -->
+    <div class="tab-panel active" id="tab-recording">
+      <!-- Not in Meeting State -->
+      <div id="notInMeeting" class="state-section">
+        <div class="empty-state">
+          <div class="empty-icon">📹</div>
+          <h3>No Active Meeting</h3>
+          <p>Join a Google Meet, Zoom, or Teams meeting to start capturing tasks automatically.</p>
+        </div>
       </div>
 
-      <div class="recording-section">
-        <button id="recordBtn" class="btn btn-record">
-          <span class="record-icon">🔴</span>
-          <span class="btn-text">Start Recording</span>
+      <!-- In Meeting State -->
+      <div id="inMeeting" class="state-section hidden">
+        <div class="meeting-info">
+          <div class="platform-badge" id="platformBadge">Google Meet</div>
+          <h3 id="meetingTitle">Meeting Title</h3>
+          <p class="meeting-id" id="meetingId">ID: —</p>
+        </div>
+        <div class="recording-section">
+          <button id="recordBtn" class="btn btn-record">
+            <span class="record-icon">🔴</span>
+            <span class="btn-text">Start Recording</span>
+          </button>
+          <p class="recording-hint">AI will extract tasks and update your Board in real time</p>
+        </div>
+        <div class="stats-section">
+          <div class="stat-item">
+            <span class="stat-value" id="captionCount">0</span>
+            <span class="stat-label">Captions</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value" id="duration">00:00</span>
+            <span class="stat-label">Duration</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recording Active State -->
+      <div id="recordingActive" class="state-section hidden">
+        <div class="recording-indicator">
+          <div class="pulse-ring"></div>
+          <div class="pulse-ring"></div>
+          <div class="recording-icon">🔴</div>
+        </div>
+        <h3>AI Recording Active</h3>
+        <p class="recording-subtitle">Extracting tasks and updating your Board in real time</p>
+        <div class="live-stats">
+          <div class="live-stat">
+            <span class="live-value" id="liveCaptionCount">0</span>
+            <span class="live-label">Captures</span>
+          </div>
+          <div class="live-stat">
+            <span class="live-value" id="liveDuration">00:00</span>
+            <span class="live-label">Elapsed</span>
+          </div>
+        </div>
+        <button id="stopBtn" class="btn btn-stop">
+          <span class="stop-icon">⏹</span>
+          <span class="btn-text">Stop Recording</span>
         </button>
-        <p class="recording-hint">Click to extract tasks from this meeting</p>
+        <p class="recording-hint" style="margin-top:8px;font-size:11px;color:#64748b;">
+          Stopping will send email summaries to your entire team
+        </p>
       </div>
+    </div>
 
-      <div class="stats-section">
-        <div class="stat-item">
-          <span class="stat-value" id="captionCount">0</span>
-          <span class="stat-label">Captions</span>
+    <!-- Schedule Tab -->
+    <div class="tab-panel" id="tab-schedule">
+      <div class="schedule-panel">
+        <div class="schedule-form">
+          <div>
+            <label for="schedMeetingUrl">Meeting URL</label>
+            <input type="url" id="schedMeetingUrl" placeholder="https://meet.google.com/abc-xyz" />
+          </div>
+          <div>
+            <label for="schedTitle">Meeting Title</label>
+            <input type="text" id="schedTitle" placeholder="e.g. Daily Standup" />
+          </div>
+          <div>
+            <label for="schedTime">Date & Time</label>
+            <input type="datetime-local" id="schedTime" />
+          </div>
+          <button id="scheduleBtn" class="btn-schedule">⏰ Schedule Auto-Join</button>
         </div>
-        <div class="stat-item">
-          <span class="stat-value" id="duration">00:00</span>
-          <span class="stat-label">Duration</span>
+
+        <div id="schedulesContainer">
+          <div class="schedules-title">Upcoming Meetings</div>
+          <div id="schedulesList">
+            <div class="no-schedules">No meetings scheduled</div>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Recording Active State -->
-    <div id="recordingActive" class="state-section hidden">
-      <div class="recording-indicator">
-        <div class="pulse-ring"></div>
-        <div class="pulse-ring"></div>
-        <div class="recording-icon">🔴</div>
-      </div>
-      <h3>Recording in Progress</h3>
-      <p class="recording-subtitle">AI is extracting tasks from the meeting</p>
-
-      <div class="live-stats">
-        <div class="live-stat">
-          <span class="live-value" id="liveCaptionCount">0</span>
-          <span class="live-label">Captures</span>
-        </div>
-        <div class="live-stat">
-          <span class="live-value" id="liveDuration">00:00</span>
-          <span class="live-label">Elapsed</span>
-        </div>
-      </div>
-
-      <button id="stopBtn" class="btn btn-stop">
-        <span class="stop-icon">⏹</span>
-        <span class="btn-text">Stop Recording</span>
-      </button>
-    </div>
-
-    <!-- Settings Section -->
+    <!-- Settings -->
     <div class="settings-section">
-      <details class="settings-dropdown">
+      <details class="settings-dropdown" id="settingsDetails">
         <summary>⚙️ Settings</summary>
         <div class="settings-content">
           <div class="setting-item">
             <label for="apiUrl">API URL</label>
-            <input type="text" id="apiUrl" placeholder="http://localhost:5572">
+            <input type="text" id="apiUrl" placeholder="https://..." />
           </div>
           <div class="setting-item">
             <label for="authToken">Auth Token</label>
-            <input type="password" id="authToken" placeholder="Your JWT token">
+            <input type="password" id="authToken" placeholder="Paste your JWT token" />
+            <div class="settings-hint">
+              Get your token from
+              <a class="settings-hint-link" id="dashboardLink" target="_blank">Cortex AI Dashboard → Profile</a>
+            </div>
           </div>
           <button id="saveSettings" class="btn btn-secondary">Save Settings</button>
         </div>
@@ -104,7 +213,7 @@
 
     <!-- Footer -->
     <footer class="footer">
-      <a href="http://localhost:3000" target="_blank" class="footer-link">
+      <a id="footerDashboardLink" href="https://cortexai.app/dashboard" target="_blank" class="footer-link">
         Open Dashboard →
       </a>
     </footer>
