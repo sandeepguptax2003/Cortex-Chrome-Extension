@@ -2,6 +2,8 @@
 
 Automatically extract tasks from Zoom, Google Meet, and Microsoft Teams meetings using AI.
 
+![Extension Interface](https://github-production-user-asset-6210df.s3.amazonaws.com/119393286/572666894-a6a610be-398f-47ea-a452-591f7d24e250.webp?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20260401%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260401T173853Z&X-Amz-Expires=300&X-Amz-Signature=1baf8148e31fd917bf5f425058994b56627b84a3d006c750db176e81dc74cae7&X-Amz-SignedHeaders=host)
+
 ## Features
 
 - 🔴 **One-click recording** - Start capturing meeting captions instantly
